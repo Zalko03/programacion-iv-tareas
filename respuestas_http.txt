@@ -1,0 +1,125 @@
+======================================================================
+REGISTRO DE RESPUESTAS HTTP (CLASE 4 - TAREA 5.2.2)
+Pruebas de códigos de estado HTTP contra TaskFlow API
+======================================================================
+
+1. CÓDIGO 200 OK (Lectura exitosa)
+----------------------------------------------------------------------
+Comando / Petición:
+curl -i http://127.0.0.1:8000/api/tasks/
+
+Respuesta real:
+HTTP/1.1 200 OK
+Content-Type: application/json
+Vary: Accept, Cookie
+
+[
+  {
+    "id": 1,
+    "project": 1,
+    "title": "Diseñar modelo de Usuario",
+    "description": "Campos necesarios para el registro y roles.",
+    "priority": "alta",
+    "status": "completada",
+    "due_date": "2026-10-23",
+    "tags": [
+      {
+        "id": 1,
+        "name": "backend"
+      },
+      {
+        "id": 2,
+        "name": "urgente"
+      }
+    ],
+    "created_at": "2026-10-21T17:12:17.382210Z"
+  }
+]
+
+2. CÓDIGO 201 Created (Creación exitosa)
+----------------------------------------------------------------------
+Comando / Petición:
+curl -i -X POST http://127.0.0.1:8000/api/tasks/ \
+  -H "Content-Type: application/json" \
+  -d '{"project": 1, "title": "Nueva Tarea API", "priority": "media", "status": "pendiente"}'
+
+Respuesta real:
+HTTP/1.1 201 Created
+Content-Type: application/json
+Vary: Accept, Cookie
+
+{
+  "id": 8,
+  "project": 1,
+  "title": "Nueva Tarea API",
+  "description": "",
+  "priority": "media",
+  "status": "pendiente",
+  "due_date": null,
+  "tags": [],
+  "created_at": "2026-10-21T17:27:20.012035Z"
+}
+
+3. CÓDIGO 204 No Content (Eliminación exitosa)
+----------------------------------------------------------------------
+Comando / Petición:
+curl -i -X DELETE http://127.0.0.1:8000/api/tasks/8/
+
+Respuesta real:
+HTTP/1.1 204 No Content
+Content-Length: 0
+Vary: Accept, Cookie
+
+(Cuerpo vacío a propósito)
+
+4. CÓDIGO 400 Bad Request (Fallo de validación de serializer)
+----------------------------------------------------------------------
+Comando / Petición:
+curl -i -X POST http://127.0.0.1:8000/api/tasks/ \
+  -H "Content-Type: application/json" \
+  -d '{"project": 1}'
+
+Respuesta real:
+HTTP/1.1 400 Bad Request
+Content-Type: application/json
+Vary: Accept, Cookie
+
+{
+  "error": true,
+  "detail": {
+    "title": [
+      "This field is required."
+    ]
+  }
+}
+
+5. CÓDIGO 404 Not Found (Recurso no encontrado)
+----------------------------------------------------------------------
+Comando / Petición:
+curl -i http://127.0.0.1:8000/api/tasks/999/
+
+Respuesta real:
+HTTP/1.1 404 Not Found
+Content-Type: application/json
+Vary: Accept, Cookie
+
+{
+  "error": true,
+  "detail": {
+    "detail": "No Task matches the given query."
+  }
+}
+
+6. CÓDIGO 500 Internal Server Error (Error interno no controlado)
+----------------------------------------------------------------------
+Comando / Petición:
+(Interceptado centralizadamente por custom_exception_handler)
+
+Respuesta real:
+HTTP/1.1 500 Internal Server Error
+Content-Type: application/json
+
+{
+  "error": true,
+  "detail": "Error interno del servidor."
+}
