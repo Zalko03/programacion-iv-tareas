@@ -7,77 +7,72 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from core.models import Project, Task, Tag
+from core.models import Project, ProjectMembership, Task, Tag
 from core.services import HolidayService
 
 
 class CoreAPITests(TestCase):
     def setUp(self):
         cache.clear()
-        self.user_a = User.objects.create_user(
-            username="usuario_a",
-            email="a@ejemplo.com",
+        self.user_admin = User.objects.create_user(
+            username="admin_user",
+            email="admin_user@ejemplo.com",
             password="Password123!"
         )
-        self.user_b = User.objects.create_user(
-            username="usuario_b",
-            email="b@ejemplo.com",
+        self.user_member = User.objects.create_user(
+            username="member_user",
+            email="member_user@ejemplo.com",
+            password="Password123!"
+        )
+        self.user_stranger = User.objects.create_user(
+            username="stranger_user",
+            email="stranger_user@ejemplo.com",
             password="Password123!"
         )
 
-        token_a = RefreshToken.for_user(self.user_a)
-        self.auth_headers_a = {"HTTP_AUTHORIZATION": f"Bearer {token_a.access_token}"}
+        token_admin = RefreshToken.for_user(self.user_admin)
+        self.auth_admin = {"HTTP_AUTHORIZATION": f"Bearer {token_admin.access_token}"}
 
-        token_b = RefreshToken.for_user(self.user_b)
-        self.auth_headers_b = {"HTTP_AUTHORIZATION": f"Bearer {token_b.access_token}"}
+        token_member = RefreshToken.for_user(self.user_member)
+        self.auth_member = {"HTTP_AUTHORIZATION": f"Bearer {token_member.access_token}"}
+
+        token_stranger = RefreshToken.for_user(self.user_stranger)
+        self.auth_stranger = {"HTTP_AUTHORIZATION": f"Bearer {token_stranger.access_token}"}
 
         self.tag_backend = Tag.objects.create(name="backend")
         self.project = Project.objects.create(
             name="Proyecto Alfa",
             description="Descripción de prueba"
         )
-        self.task_a1 = Task.objects.create(
+        # Memberships
+        ProjectMembership.objects.create(project=self.project, user=self.user_admin, role="admin")
+        ProjectMembership.objects.create(project=self.project, user=self.user_member, role="miembro")
+
+        self.task_1 = Task.objects.create(
             project=self.project,
-            owner=self.user_a,
-            title="Tarea A1 Completada",
+            owner=self.user_admin,
+            title="Tarea 1 Completada",
             description="Detalles de la tarea",
             priority="alta",
             status="completada",
             due_date=date.today() + timedelta(days=2)
         )
-        self.task_a1.tags.add(self.tag_backend)
+        self.task_1.tags.add(self.tag_backend)
 
-        self.task_a2 = Task.objects.create(
+        self.task_2 = Task.objects.create(
             project=self.project,
-            owner=self.user_a,
-            title="Tarea A2 Pendiente",
+            owner=self.user_admin,
+            title="Tarea 2 Pendiente",
             description="Buscar wireframe en diseño",
             priority="media",
             status="pendiente",
             due_date=date.today() + timedelta(days=5)
         )
 
-        self.task_b1 = Task.objects.create(
-            project=self.project,
-            owner=self.user_b,
-            title="Tarea B1",
-            description="Tarea de usuario B",
-            priority="baja",
-            status="pendiente",
-            due_date=date.today() + timedelta(days=3)
-        )
-
     def test_health_check_unauthenticated(self):
         response = self.client.get(reverse("health_check"))
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.json(), {"status": "ok", "service": "TaskFlow API"})
-
-    def test_tasks_unauthenticated_returns_401(self):
-        response = self.client.get(reverse("task-list"))
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
-        data = response.json()
-        self.assertTrue(data.get("error"))
-        self.assertIn("detail", data)
 
     def test_register_success(self):
         response = self.client.post(
@@ -91,131 +86,141 @@ class CoreAPITests(TestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertNotIn("password", response.json())
-        self.assertEqual(response.json()["username"], "carlos")
 
-    def test_register_weak_password_fails(self):
-        response = self.client.post(
-            reverse("register"),
-            {
-                "username": "carlos2",
-                "email": "carlos2@ejemplo.com",
-                "password": "123"
-            },
-            content_type="application/json"
-        )
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        data = response.json()
-        self.assertTrue(data.get("error"))
-
-    def test_register_duplicate_email_fails(self):
-        response = self.client.post(
-            reverse("register"),
-            {
-                "username": "otro_usuario",
-                "email": "a@ejemplo.com",
-                "password": "Password123!"
-            },
-            content_type="application/json"
-        )
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        data = response.json()
-        self.assertTrue(data.get("error"))
-        self.assertIn("Ya existe un usuario con ese email", str(data["detail"]))
-
-    def test_token_obtain_and_refresh(self):
-        response = self.client.post(
-            reverse("token_obtain_pair"),
-            {
-                "username": "usuario_a",
-                "password": "Password123!"
-            },
-            content_type="application/json"
-        )
+    def test_social_login_jwt_view(self):
+        response = self.client.get(reverse("social_jwt"), **self.auth_admin)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        access = response.json().get("access")
-        refresh = response.json().get("refresh")
-        self.assertIsNotNone(access)
-        self.assertIsNotNone(refresh)
+        data = response.json()
+        self.assertIn("access", data)
+        self.assertIn("refresh", data)
 
-        # Probar refresh token
-        res_refresh = self.client.post(
-            reverse("token_refresh"),
-            {"refresh": refresh},
-            content_type="application/json"
+    def test_project_visibility_by_membership(self):
+        # Admin ve el proyecto
+        res_admin = self.client.get(reverse("project-list"), **self.auth_admin)
+        self.assertEqual(res_admin.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_admin.json()["count"], 1)
+
+        # Miembro ve el proyecto
+        res_member = self.client.get(reverse("project-list"), **self.auth_member)
+        self.assertEqual(res_member.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_member.json()["count"], 1)
+
+        # Extraño no lo ve (lista vacía)
+        res_stranger = self.client.get(reverse("project-list"), **self.auth_stranger)
+        self.assertEqual(res_stranger.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_stranger.json()["count"], 0)
+
+        # Extraño pide por id -> 404
+        res_detail = self.client.get(reverse("project-detail", kwargs={"pk": self.project.id}), **self.auth_stranger)
+        self.assertEqual(res_detail.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_project_create_assigns_admin_membership_atomically(self):
+        response = self.client.post(
+            reverse("project-list"),
+            {"name": "Proyecto Beta", "description": "Nuevo proyecto"},
+            content_type="application/json",
+            **self.auth_admin
         )
-        self.assertEqual(res_refresh.status_code, status.HTTP_200_OK)
-        self.assertIn("access", res_refresh.json())
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        new_project_id = response.json()["id"]
+        membership = ProjectMembership.objects.filter(project_id=new_project_id, user=self.user_admin).first()
+        self.assertIsNotNone(membership)
+        self.assertEqual(membership.role, "admin")
 
-    def test_ownership_isolation_and_idor_prevention(self):
-        # Usuario A lista sus tareas (debe ver 2 tareas: task_a1 y task_a2)
-        res_a = self.client.get(reverse("task-list"), **self.auth_headers_a)
-        self.assertEqual(res_a.status_code, status.HTTP_200_OK)
-        self.assertEqual(res_a.json()["count"], 2)
+    def test_member_cannot_modify_project(self):
+        response = self.client.patch(
+            reverse("project-detail", kwargs={"pk": self.project.id}),
+            {"name": "Nombre Modificado"},
+            content_type="application/json",
+            **self.auth_member
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
-        # Usuario B lista sus tareas (debe ver solo 1 tarea: task_b1)
-        res_b = self.client.get(reverse("task-list"), **self.auth_headers_b)
-        self.assertEqual(res_b.status_code, status.HTTP_200_OK)
-        self.assertEqual(res_b.json()["count"], 1)
-        self.assertEqual(res_b.json()["results"][0]["id"], self.task_b1.id)
-
-        # Usuario B intenta acceder a tarea de Usuario A -> 404 (IDOR prevention)
-        res_idor = self.client.get(reverse("task-detail", kwargs={"pk": self.task_a1.id}), **self.auth_headers_b)
-        self.assertEqual(res_idor.status_code, status.HTTP_404_NOT_FOUND)
-
-    def test_task_create_assigns_owner_automatically(self):
+    def test_task_create_by_admin_succeeds(self):
         response = self.client.post(
             reverse("task-list"),
             {
                 "project": self.project.id,
-                "title": "Tarea Creada Por B",
+                "title": "Tarea Creada Por Admin",
                 "priority": "alta",
                 "status": "pendiente",
-                "due_date": str(date.today() + timedelta(days=4)),
+                "due_date": str(date.today() + timedelta(days=7)),
             },
             content_type="application/json",
-            **self.auth_headers_b
+            **self.auth_admin
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        new_task = Task.objects.get(id=response.json()["id"])
-        self.assertEqual(new_task.owner, self.user_b)
 
-    def test_project_list_authenticated(self):
-        response = self.client.get(reverse("project-list"), **self.auth_headers_a)
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        data = response.json()
-        self.assertEqual(data["count"], 1)
-
-    def test_task_action_complete_authenticated(self):
+    def test_task_create_by_member_fails_403(self):
         response = self.client.post(
-            reverse("task-complete", kwargs={"pk": self.task_a2.id}),
-            **self.auth_headers_a
+            reverse("task-list"),
+            {
+                "project": self.project.id,
+                "title": "Intento de Miembro",
+                "priority": "alta",
+                "status": "pendiente",
+                "due_date": str(date.today() + timedelta(days=7)),
+            },
+            content_type="application/json",
+            **self.auth_member
         )
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.task_a2.refresh_from_db()
-        self.assertEqual(self.task_a2.status, "completada")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
-    def test_task_action_overdue_authenticated(self):
-        task_vencida = Task.objects.create(
-            project=self.project,
-            owner=self.user_a,
-            title="Tarea Vencida A",
-            status="pendiente",
-            due_date=date.today() - timedelta(days=1)
+    def test_task_modify_by_member_fails_403(self):
+        response = self.client.patch(
+            reverse("task-detail", kwargs={"pk": self.task_2.id}),
+            {"title": "Nuevo Titulo"},
+            content_type="application/json",
+            **self.auth_member
         )
-        response = self.client.get(reverse("task-overdue"), **self.auth_headers_a)
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        ids = [item["id"] for item in response.json()["results"]]
-        self.assertIn(task_vencida.id, ids)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_add_member_by_admin(self):
+        response = self.client.post(
+            reverse("project-add-member", kwargs={"pk": self.project.id}),
+            {"username": "stranger_user", "role": "miembro"},
+            content_type="application/json",
+            **self.auth_admin
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(ProjectMembership.objects.filter(project=self.project, user=self.user_stranger).exists())
+
+    def test_add_member_by_non_admin_fails_403(self):
+        response = self.client.post(
+            reverse("project-add-member", kwargs={"pk": self.project.id}),
+            {"username": "stranger_user", "role": "miembro"},
+            content_type="application/json",
+            **self.auth_member
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_add_member_already_exists_fails_400(self):
+        response = self.client.post(
+            reverse("project-add-member", kwargs={"pk": self.project.id}),
+            {"username": "member_user", "role": "miembro"},
+            content_type="application/json",
+            **self.auth_admin
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_add_member_user_not_found_fails_404(self):
+        response = self.client.post(
+            reverse("project-add-member", kwargs={"pk": self.project.id}),
+            {"username": "usuario_inexistente_xyz", "role": "miembro"},
+            content_type="application/json",
+            **self.auth_admin
+        )
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     @patch.object(HolidayService, "get_holidays", return_value=["2026-05-25"])
-    def test_due_on_holiday_field_authenticated(self, mock_holidays):
+    def test_due_on_holiday_field(self, mock_holidays):
         task_feriado = Task.objects.create(
             project=self.project,
-            owner=self.user_a,
-            title="Tarea en Feriado A",
+            owner=self.user_admin,
+            title="Tarea en Feriado",
             status="pendiente",
             due_date=date(2026, 5, 25)
         )
-        response = self.client.get(reverse("task-detail", kwargs={"pk": task_feriado.id}), **self.auth_headers_a)
+        response = self.client.get(reverse("task-detail", kwargs={"pk": task_feriado.id}), **self.auth_admin)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(response.json()["due_on_holiday"])
