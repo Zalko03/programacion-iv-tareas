@@ -7,8 +7,12 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from asgiref.sync import async_to_sync
+from channels.testing import WebsocketCommunicator
+from config.asgi import application
 from core.models import Project, ProjectMembership, Task, Tag, SecurityLog
 from core.services import HolidayService
+
 
 
 class CoreAPITests(TestCase):
@@ -291,4 +295,28 @@ class CoreAPITests(TestCase):
             HTTP_ORIGIN="http://sitio-malicioso.com",
         )
         self.assertNotIn("Access-Control-Allow-Origin", res_disallowed.headers)
+
+    def test_websocket_connect_and_echo(self):
+        async def run():
+            communicator = WebsocketCommunicator(application, f"/ws/projects/{self.project.id}/")
+            connected, _ = await communicator.connect()
+            self.assertTrue(connected)
+
+            await communicator.send_json_to({"mensaje": "hola desde el cliente"})
+            response = await communicator.receive_json_from()
+            self.assertEqual(response, {"echo": {"mensaje": "hola desde el cliente"}})
+
+            await communicator.disconnect()
+
+        async_to_sync(run)()
+
+    def test_websocket_rejects_nonexistent_project(self):
+        async def run():
+            communicator = WebsocketCommunicator(application, "/ws/projects/999999/")
+            connected, _ = await communicator.connect()
+            self.assertFalse(connected)
+            await communicator.disconnect()
+
+        async_to_sync(run)()
+
 
