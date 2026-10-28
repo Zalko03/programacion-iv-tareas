@@ -7,7 +7,7 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from core.models import Project, ProjectMembership, Task, Tag
+from core.models import Project, ProjectMembership, Task, Tag, SecurityLog
 from core.services import HolidayService
 
 
@@ -224,3 +224,71 @@ class CoreAPITests(TestCase):
         response = self.client.get(reverse("task-detail", kwargs={"pk": task_feriado.id}), **self.auth_admin)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(response.json()["due_on_holiday"])
+
+    def test_task_description_sanitization(self):
+        response = self.client.post(
+            reverse("task-list"),
+            {
+                "project": self.project.id,
+                "title": "Tarea con XSS",
+                "description": "<script>alert(1)</script>Hola <b>mundo</b>",
+                "priority": "media",
+                "status": "pendiente",
+                "due_date": str(date.today() + timedelta(days=3)),
+            },
+            content_type="application/json",
+            **self.auth_admin,
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.json()["description"], "Hola mundo")
+
+    def test_login_rate_limiting_and_security_log(self):
+        SecurityLog.objects.filter(action="login_failed").delete()
+        for _ in range(5):
+            res = self.client.post(
+                reverse("token_obtain_pair"),
+                {"username": "admin_user", "password": "wrong_password"},
+                content_type="application/json",
+            )
+            self.assertEqual(res.status_code, status.HTTP_401_UNAUTHORIZED)
+
+        # 6th attempt should be throttled (429)
+        res_6 = self.client.post(
+            reverse("token_obtain_pair"),
+            {"username": "admin_user", "password": "wrong_password"},
+            content_type="application/json",
+        )
+        self.assertEqual(res_6.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+
+        # There should be 5 login_failed logs (the 6th was throttled before checking password)
+        failed_logs = SecurityLog.objects.filter(action="login_failed")
+        self.assertEqual(failed_logs.count(), 5)
+        self.assertIn("usuario=admin_user", failed_logs.first().detail)
+
+    def test_permission_denied_creates_security_log(self):
+        SecurityLog.objects.filter(action="permission_denied").delete()
+        response = self.client.patch(
+            reverse("project-detail", kwargs={"pk": self.project.id}),
+            {"name": "Intento no autorizado"},
+            content_type="application/json",
+            **self.auth_member,
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        log = SecurityLog.objects.filter(action="permission_denied", user=self.user_member).first()
+        self.assertIsNotNone(log)
+
+    def test_cors_allowed_origins(self):
+        # Origin permitido
+        res_allowed = self.client.get(
+            reverse("health_check"),
+            HTTP_ORIGIN="http://localhost:3000",
+        )
+        self.assertEqual(res_allowed.headers.get("Access-Control-Allow-Origin"), "http://localhost:3000")
+
+        # Origin no permitido
+        res_disallowed = self.client.get(
+            reverse("health_check"),
+            HTTP_ORIGIN="http://sitio-malicioso.com",
+        )
+        self.assertNotIn("Access-Control-Allow-Origin", res_disallowed.headers)
+
