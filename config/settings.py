@@ -106,6 +106,9 @@ else:
     }
     if DB_ENGINE == "mysql":
         DATABASES["default"]["OPTIONS"] = {"charset": "utf8mb4"}
+    # Opciones de PostgreSQL (SSL para servicios en la nube como Supabase)
+    if DB_ENGINE == "postgresql" and os.getenv("DB_SSLMODE"):
+        DATABASES["default"]["OPTIONS"] = {"sslmode": os.getenv("DB_SSLMODE")}
 
 
 # Password validation
@@ -262,4 +265,4 @@ CSRF_TRUSTED_ORIGINS = [o for o in os.getenv("CSRF_TRUSTED_ORIGINS", "").split("
 
 
 
-
+

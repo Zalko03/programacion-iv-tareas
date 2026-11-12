@@ -6,16 +6,31 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      pg:
+        condition: service_healthy
       redis:
         condition: service_started
   db:
+    image: mysql:8
+    environment:
+      MYSQL_DATABASE: taskflow_db
+      MYSQL_USER: taskflow_user
+      MYSQL_PASSWORD: una_clave_segura
+      MYSQL_ROOT_PASSWORD: otra_clave_segura
+    volumes:
+      - mysqldata:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-potra_clave_segura"]
+      interval: 5s
+      retries: 20
+  pg:
     image: postgres:16
     environment:
       POSTGRES_DB: taskflow
       POSTGRES_USER: taskflow
       POSTGRES_PASSWORD: taskflow
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata_extra:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U taskflow -d taskflow"]
       interval: 5s
@@ -23,5 +38,5 @@ services:
   redis:
     image: redis:7
 volumes:
-  pgdata:
-
+  mysqldata:
+  pgdata_extra:
