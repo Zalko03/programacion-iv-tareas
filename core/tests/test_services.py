@@ -25,3 +25,4 @@ def test_mark_completed_sin_fecha_limite_falla():
 def test_is_holiday_usa_la_lista_de_feriados():
     assert HolidayService.is_holiday(date(2030, 5, 25)) is True
     assert HolidayService.is_holiday(date(2030, 5, 26)) is False
+

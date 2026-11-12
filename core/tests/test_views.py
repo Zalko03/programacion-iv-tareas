@@ -32,3 +32,4 @@ def test_miembro_no_puede_crear_tarea(cliente, beto, proyecto):
     cliente.force_authenticate(user=beto)
     response = cliente.post("/api/tasks/", {"project": proyecto.id, "title": "Nueva"}, format="json")
     assert response.status_code == 403
+

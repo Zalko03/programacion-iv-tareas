@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>TaskFlow</title>
+  <style>
+    body { font-family: sans-serif; max-width: 700px; margin: 40px auto; padding: 0 16px; }
+    input, select, button { padding: 8px; margin: 4px 0; }
+    #tasks li { margin: 6px 0; }
+    .error { color: red; }
+    .online { color: green; font-size: 0.9em; }
+    .nav-buttons { margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <h1>TaskFlow</h1>
+  <section id="login-box">
+    <h2>Ingresar</h2>
+    <input id="username" placeholder="usuario">
+    <input id="password" type="password" placeholder="contraseña">
+    <button onclick="login()">Ingresar</button>
+    <p id="login-error" class="error"></p>
+  </section>
+  <section id="app-box" style="display:none;">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+      <h2>Mis tareas</h2>
+      <button onclick="logout()">Salir</button>
+    </div>
+    <ul id="tasks"></ul>
+    <div class="nav-buttons">
+      <button id="btn-prev" onclick="prevPage()" disabled>Anterior</button>
+      <button id="btn-next" onclick="nextPage()" disabled>Siguiente</button>
+    </div>
+    <hr>
+    <h3>Nueva Tarea</h3>
+    <select id="project" onchange="onProjectChange()"></select>
+    <input id="new-title" placeholder="Nueva tarea">
+    <button onclick="createTask()">Agregar</button>
+    <p id="app-error" class="error"></p>
+    <p id="ws-status" class="online"></p>
+  </section>
+  <script src="app.js"></script>
+</body>
+</html>

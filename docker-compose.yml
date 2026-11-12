@@ -24,3 +24,4 @@ services:
     image: redis:7
 volumes:
   pgdata:
+

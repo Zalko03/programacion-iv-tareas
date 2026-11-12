@@ -36,3 +36,4 @@ def proyecto(ana, beto):
 @pytest.fixture
 def cliente():
     return APIClient()
+
