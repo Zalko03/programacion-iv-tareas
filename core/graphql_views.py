@@ -18,3 +18,4 @@ class JWTGraphQLView(GraphQLView):
         if result is not None:
             request.user, _ = result
         return super().dispatch(request, *args, **kwargs)
+

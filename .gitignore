@@ -4,4 +4,9 @@ __pycache__/
 *.pyc
 db.sqlite3
 .env
+.env.*
 security.log
+staticfiles/
+.coverage
+.pytest_cache/
+
